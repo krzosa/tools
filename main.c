@@ -4,9 +4,9 @@
 #include <stdint.h>
 
 #define Panic(...) __Panic(__LINE__, __FILE__, __VA_ARGS__)
-#define AssertMessage(x, ...)                     \
-  do {                                \
-    if (!(x))                         \
+#define AssertMessage(x, ...)                           \
+  do {                                                  \
+    if (!(x))                                           \
       Panic("Assertion failed = " #x "\n" __VA_ARGS__); \
   } while (0)
 #define Assert(x) AssertMessage(x, "")
@@ -22,17 +22,17 @@ void __Panic(int line, char *file, char *msg, ...) {
 
 #define mui_assert_message AssertMessage
 #define mui_panic Panic
-#include "os.c"
+#include "mui.c"
 
 int main() {
   mui_context mui = mui_start(&(mui_desc){
-    .w = 800,
-    .h = 600,
+      .w = 800,
+      .h = 600,
   });
+  for (int i = 0; i < mui.w * mui.h; i += 1) {
+    mui.canvas[i] = (mui_color){.r = 0.5f, .a = 0.5f};
+  }
   while (mui_update(&mui)) {
-    for (int i = 0; i < mui.w * mui.h; i += 1) {
-      mui.canvas[i] = 0x80808080;
-    }    
   }
 
   return 0;

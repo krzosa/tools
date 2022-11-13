@@ -9,6 +9,10 @@
 #define mui_assert_message(x, ...)
 #endif
 
+typedef struct mui_color {
+  float r, g, b, a;
+} mui_color;
+
 typedef enum mui_kind {
   mui_kind_overlay,
 } mui_kind;
@@ -25,7 +29,7 @@ typedef struct mui_desc {
 
 typedef struct mui_context {
   mui_desc desc;
-  uint32_t *canvas;
+  mui_color *canvas;
   int x, y, w, h;
   int should_quit;
 
@@ -47,7 +51,6 @@ typedef struct mui_context {
 
 typedef struct mui_x11_context {
   XImage *image;
-
   Display *display;
   Window root;
   int screen;
@@ -56,6 +59,7 @@ typedef struct mui_x11_context {
   Window window;
   GC gc;
   Atom wm_delete_window;
+  uint32_t *canvas;
 } mui_x11_context;
 
 void mui__update_canvas(mui_context *mui) {
@@ -68,16 +72,38 @@ void mui__update_canvas(mui_context *mui) {
   XGetGeometry(mui->x11->display, mui->x11->window, &mui->x11->root, &x, &y, &w, &h, &border, &depth);
 
   if (mui->x11->image != NULL && mui->w == w && mui->h == h) {
+    for(int i = 0; i < mui->w*mui->h; i+=1) {
+      uint32_t *dst = mui->x11->canvas + i;
+      mui_color *src = mui->canvas + i;
+
+      mui_color final = *src;
+      final.r *= final.a;
+      final.g *= final.a;
+      final.b *= final.a;
+
+      uint32_t a = (uint32_t)(final.a * 255.f) << 24;
+      uint32_t r = (uint32_t)(final.r * 255.f) << 16;
+      uint32_t g = (uint32_t)(final.g * 255.f) << 8;
+      uint32_t b = (uint32_t)(final.g * 255.f);
+      *dst = a | r | g | b;
+
+
+    }
     XPutImage(mui->x11->display, mui->x11->window, mui->x11->gc, mui->x11->image, 0, 0, 0, 0, mui->w, mui->h);
   }
 
   if (mui->w != w || mui->h != h) {
-    XDestroyImage(mui->x11->image);
+    if(mui->x11->image) {
+      XDestroyImage(mui->x11->image);
+      free(mui->canvas);
+      free(mui->x11->canvas);
+    }
   }
 
   if (mui->x11->image == NULL) {
-    mui->canvas = malloc(mui->w * mui->h * 4);
-    mui->x11->image = XCreateImage(mui->x11->display, mui->x11->visual, mui->x11->depth, ZPixmap, 0, (char *)mui->canvas, mui->w, mui->h, 32, mui->w * 4);
+    mui->canvas = malloc(mui->w * mui->h * sizeof(mui_color));
+    mui->x11->canvas = malloc(mui->w * mui->h * 4);
+    mui->x11->image = XCreateImage(mui->x11->display, mui->x11->visual, mui->x11->depth, ZPixmap, 0, (char *)mui->x11->canvas, mui->w, mui->h, 32, mui->w * 4);
   }
 
   mui->w = w;
@@ -134,6 +160,7 @@ mui_context mui_start(const mui_desc *desc) {
   XGrabKey(mui.x11->display, XKeysymToKeycode(mui.x11->display, XK_Y), ControlMask | ShiftMask, mui.x11->root, False, GrabModeAsync, GrabModeAsync);
   XSelectInput(mui.x11->display, mui.x11->root, KeyPressMask);
 
+  mui__update_canvas(&mui);
   return mui;
 }
 
