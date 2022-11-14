@@ -1,3 +1,12 @@
+/*
+- draw bottom up bitmap while converting to premultiplied alpha
+- invert y in mui_draw_string
+
+- add the concept of app update kind, implement game loop sort of thing
+- stack of rectangles with coordinates of canvas partial updates
+
+*/
+
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -7,6 +16,14 @@
 
 #ifndef mui_assert_message
 #define mui_assert_message(x, ...)
+#endif
+
+#ifndef mui_malloc
+#define mui_malloc malloc
+#endif
+
+#ifndef mui_free
+#define mui_free free
 #endif
 
 typedef struct mui_color {
@@ -72,37 +89,57 @@ void mui__update_canvas(mui_context *mui) {
   XGetGeometry(mui->x11->display, mui->x11->window, &mui->x11->root, &x, &y, &w, &h, &border, &depth);
 
   if (mui->x11->image != NULL && mui->w == w && mui->h == h) {
-    for(int i = 0; i < mui->w*mui->h; i+=1) {
-      uint32_t *dst = mui->x11->canvas + i;
-      mui_color *src = mui->canvas + i;
+    int y_dst = mui->h - 1;
+    for (int y_src = 0; y_src < mui->h; y_src += 1) {
+      for (int x_src = 0; x_src < mui->w; x_src += 1) {
+        mui_color src = mui->canvas[x_src + y_src * mui->w];
+        uint32_t *dst = mui->x11->canvas + (x_src + y_dst * mui->w);
 
-      mui_color final = *src;
-      final.r *= final.a;
-      final.g *= final.a;
-      final.b *= final.a;
+        if (mui->desc.kind == mui_kind_overlay) {
+          // X11 expects premultiplied alpha for transparent windows
+          src.r *= src.a;
+          src.g *= src.a;
+          src.b *= src.a;
+        }
 
-      uint32_t a = (uint32_t)(final.a * 255.f) << 24;
-      uint32_t r = (uint32_t)(final.r * 255.f) << 16;
-      uint32_t g = (uint32_t)(final.g * 255.f) << 8;
-      uint32_t b = (uint32_t)(final.g * 255.f);
-      *dst = a | r | g | b;
-
-
+        uint32_t a = (uint32_t)(src.a * 255.f) << 24;
+        uint32_t r = (uint32_t)(src.r * 255.f) << 16;
+        uint32_t g = (uint32_t)(src.g * 255.f) << 8;
+        uint32_t b = (uint32_t)(src.g * 255.f);
+        *dst = a | r | g | b;
+      }
+      y_dst -= 1;
     }
+    // for (int i = 0; i < mui->w * mui->h; i += 1) {
+    //   uint32_t *dst = mui->x11->canvas + i;
+    //   mui_color src = mui->canvas[i];
+    //   if (mui->desc.kind == mui_kind_overlay) {
+    //     // X11 expects premultiplied alpha for transparent windows
+    //     src.r *= src.a;
+    //     src.g *= src.a;
+    //     src.b *= src.a;
+    //   }
+
+    //   uint32_t a = (uint32_t)(src.a * 255.f) << 24;
+    //   uint32_t r = (uint32_t)(src.r * 255.f) << 16;
+    //   uint32_t g = (uint32_t)(src.g * 255.f) << 8;
+    //   uint32_t b = (uint32_t)(src.g * 255.f);
+    //   *dst = a | r | g | b;
+    // }
     XPutImage(mui->x11->display, mui->x11->window, mui->x11->gc, mui->x11->image, 0, 0, 0, 0, mui->w, mui->h);
   }
 
   if (mui->w != w || mui->h != h) {
-    if(mui->x11->image) {
+    if (mui->x11->image) {
       XDestroyImage(mui->x11->image);
-      free(mui->canvas);
-      free(mui->x11->canvas);
+      mui_free(mui->canvas);
+      mui_free(mui->x11->canvas);
     }
   }
 
   if (mui->x11->image == NULL) {
-    mui->canvas = malloc(mui->w * mui->h * sizeof(mui_color));
-    mui->x11->canvas = malloc(mui->w * mui->h * 4);
+    mui->canvas = mui_malloc(mui->w * mui->h * sizeof(mui_color));
+    mui->x11->canvas = mui_malloc(mui->w * mui->h * 4);
     mui->x11->image = XCreateImage(mui->x11->display, mui->x11->visual, mui->x11->depth, ZPixmap, 0, (char *)mui->x11->canvas, mui->w, mui->h, 32, mui->w * 4);
   }
 
@@ -113,7 +150,6 @@ void mui__update_canvas(mui_context *mui) {
 }
 
 mui_context mui_start(const mui_desc *desc) {
-
   mui_context mui = {.desc = *desc, .x = desc->x, .y = desc->y, .w = desc->w, .h = desc->h};
   mui_assert_message(sizeof(mui.buffer) > sizeof(mui_x11_context), "Sizeof platform buffer is too small to fit platform data");
   mui_assert_message(desc->kind == mui_kind_overlay, "invalid kind of mui application selected");

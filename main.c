@@ -23,15 +23,25 @@ void __Panic(int line, char *file, char *msg, ...) {
 #define mui_assert_message AssertMessage
 #define mui_panic Panic
 #include "mui.c"
+#include "font.c"
 
 int main() {
   mui_context mui = mui_start(&(mui_desc){
-      .w = 800,
-      .h = 600,
+      .x = 32,
+      .y = 16,
+      .w = 400,
+      .h = 16 * 10,
   });
-  for (int i = 0; i < mui.w * mui.h; i += 1) {
-    mui.canvas[i] = (mui_color){.r = 0.5f, .a = 0.5f};
+
+  for (int y = 0; y < 50; y += 1) {
+    for (int x = 0; x < 50; x += 1) {
+      mui.canvas[x + y * mui.w] = (mui_color){1, 1, 1, 1};
+    }
   }
+
+  mui_font font = mui_get_builtin_font(2);
+  mui_draw_string(&mui, &font, (mui_vec2i){0, 0}, "Testing", true, (mui_color){1, 1, 1, 1});
+
   while (mui_update(&mui)) {
   }
 
