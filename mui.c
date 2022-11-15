@@ -1,7 +1,4 @@
 /*
-- draw bottom up bitmap while converting to premultiplied alpha
-- invert y in mui_draw_string
-
 - add the concept of app update kind, implement game loop sort of thing
 - stack of rectangles with coordinates of canvas partial updates
 
@@ -38,9 +35,15 @@ typedef enum mui_render_kind {
   mui_render_kind_canvas,
 } mui_render_kind;
 
+typedef enum mui_update_kind {
+  mui_update_kind_constant_updates,
+  mui_update_kind_event_based,
+} mui_update_kind;
+
 typedef struct mui_desc {
   mui_kind kind;
   mui_render_kind render_kind;
+  mui_update_kind update_kind;
   int x, y, w, h;
 } mui_desc;
 
@@ -48,7 +51,7 @@ typedef struct mui_context {
   mui_desc desc;
   mui_color *canvas;
   int x, y, w, h;
-  int should_quit;
+  bool should_quit;
 
   struct mui_x11_context *x11;
   char buffer[4096];
@@ -79,7 +82,7 @@ typedef struct mui_x11_context {
   uint32_t *canvas;
 } mui_x11_context;
 
-void mui__update_canvas(mui_context *mui) {
+static void mui__update_canvas(mui_context *mui) {
   if (mui->desc.render_kind != mui_render_kind_canvas) {
     return;
   }
@@ -110,22 +113,7 @@ void mui__update_canvas(mui_context *mui) {
       }
       y_dst -= 1;
     }
-    // for (int i = 0; i < mui->w * mui->h; i += 1) {
-    //   uint32_t *dst = mui->x11->canvas + i;
-    //   mui_color src = mui->canvas[i];
-    //   if (mui->desc.kind == mui_kind_overlay) {
-    //     // X11 expects premultiplied alpha for transparent windows
-    //     src.r *= src.a;
-    //     src.g *= src.a;
-    //     src.b *= src.a;
-    //   }
 
-    //   uint32_t a = (uint32_t)(src.a * 255.f) << 24;
-    //   uint32_t r = (uint32_t)(src.r * 255.f) << 16;
-    //   uint32_t g = (uint32_t)(src.g * 255.f) << 8;
-    //   uint32_t b = (uint32_t)(src.g * 255.f);
-    //   *dst = a | r | g | b;
-    // }
     XPutImage(mui->x11->display, mui->x11->window, mui->x11->gc, mui->x11->image, 0, 0, 0, 0, mui->w, mui->h);
   }
 
@@ -200,27 +188,38 @@ mui_context mui_start(const mui_desc *desc) {
   return mui;
 }
 
-int mui_update(mui_context *mui) {
+bool mui_update(mui_context *mui) {
   mui__update_canvas(mui);
 
-  XEvent ev;
-  XNextEvent(mui->x11->display, &ev);
-  switch (ev.type) {
-  case ClientMessage:
-    if (ev.xclient.data.l[0] == mui->x11->wm_delete_window) {
-      mui->should_quit = true;
+  int should_block = mui->desc.update_kind;
+  for (;;) {
+    int pending = XPending(mui->x11->display);
+    if (pending == 0) {
+      if (!should_block)
+        break;
+      else
+        should_block = false;
     }
-    break;
-  case KeyPress:
-    if ((ev.xkey.state & (ShiftMask | ControlMask | Mod1Mask | Mod4Mask)) == (ShiftMask | ControlMask)) {
-      printf("Hot key pressed!");
 
-      fflush(stdout);
-      // XUngrabKey(display, keycode, modifiers, grab_window);
-      // should_quit = true;
+    XEvent ev;
+    XNextEvent(mui->x11->display, &ev);
+    switch (ev.type) {
+    case ClientMessage:
+      if (ev.xclient.data.l[0] == mui->x11->wm_delete_window) {
+        mui->should_quit = true;
+      }
+      break;
+    case KeyPress:
+      if ((ev.xkey.state & (ShiftMask | ControlMask | Mod1Mask | Mod4Mask)) == (ShiftMask | ControlMask)) {
+        printf("Hot key pressed!");
+
+        fflush(stdout);
+        // XUngrabKey(display, keycode, modifiers, grab_window);
+        // should_quit = true;
+      }
+    default:
+      break;
     }
-  default:
-    break;
   }
 
   if (mui->should_quit) {
