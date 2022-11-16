@@ -258,35 +258,35 @@ uint8_t font_data[] = {
     0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
 //clang-format on
 
-typedef struct mui_vec2i {
+typedef struct ovr_vec2i {
   int x, y;
-} mui_vec2i;
+} ovr_vec2i;
 
-typedef struct mui_font {
+typedef struct ovr_font {
   uint8_t *data;
   int glyph_count;
   int glyph_x, glyph_y;
   int x_advance;
   int scale;
-} mui_font;
+} ovr_font;
 
-mui_font mui_get_builtin_font(int scale) {
-#define mui_array_cap(x) (sizeof((x)) / sizeof(*(x)))
-  return (mui_font){
+ovr_font ovr_get_builtin_font(int scale) {
+#define ovr_array_cap(x) (sizeof((x)) / sizeof(*(x)))
+  return (ovr_font){
       .data = font_data,
-      .glyph_count = mui_array_cap(font_data) / 16,
+      .glyph_count = ovr_array_cap(font_data) / 16,
       .glyph_x = 8,
       .glyph_y = 16,
       .x_advance = 9,
       .scale = scale};
 }
 
-mui_vec2i mui_draw_string(mui_context *mui, mui_font *font, mui_vec2i pos, char *string, bool draw, mui_color color) {
-  mui_color *dst = mui->canvas;
+ovr_vec2i ovr_draw_string(ovr_context *ovr, ovr_font *font, ovr_vec2i pos, char *string, bool draw, ovr_color color) {
+  ovr_color *dst = ovr->canvas;
   int size_x = font->glyph_x * font->scale;
   int size_y = font->glyph_y * font->scale;
 
-  mui_vec2i start_pos = pos;
+  ovr_vec2i start_pos = pos;
   for (char *it = string; *it; it += 1) {
     char c = *it;
     if (c >= font->glyph_count) {
@@ -302,7 +302,7 @@ mui_vec2i mui_draw_string(mui_context *mui, mui_font *font, mui_vec2i pos, char 
     {
       int maxx = pos.x + size_x;
       int maxy = pos.y + size_y;
-      mui_vec2i texture_offset = {};
+      ovr_vec2i texture_offset = {};
 
       if (pos.x < 0) {
         texture_offset.x -= pos.x;
@@ -312,11 +312,11 @@ mui_vec2i mui_draw_string(mui_context *mui, mui_font *font, mui_vec2i pos, char 
         texture_offset.y -= pos.y;
         pos.y = 0;
       }
-      if (maxx >= mui->w) {
-        maxx = mui->w - 1;
+      if (maxx >= ovr->w) {
+        maxx = ovr->w - 1;
       }
-      if (maxy >= mui->h) {
-        maxy = mui->h - 1;
+      if (maxy >= ovr->h) {
+        maxy = ovr->h - 1;
       }
 
       for (int y = pos.y; y < maxy; y++) {
@@ -327,7 +327,7 @@ mui_vec2i mui_draw_string(mui_context *mui, mui_font *font, mui_vec2i pos, char 
           int real_x = (x - pos.x + texture_offset.x) / font->scale;
           int offset = (font->glyph_x - 1 - real_x);
           if (data & (1 << offset)) {
-            dst[x + (y)*mui->w] = color;
+            dst[x + (y)*ovr->w] = color;
           }
         }
       }
@@ -336,7 +336,7 @@ mui_vec2i mui_draw_string(mui_context *mui, mui_font *font, mui_vec2i pos, char 
     pos.x += font->x_advance * font->scale;
   }
 
-  mui_vec2i result = {
+  ovr_vec2i result = {
       pos.x - start_pos.x,
       font->glyph_y * font->scale,
   };

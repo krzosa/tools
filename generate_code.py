@@ -2,8 +2,8 @@ import subprocess
 import sys
 import os
 
-
-files = []
+python_exe = "python3"
+files = ["mui.c"]
 
 for file_to_modify in files:
     fd = open(file_to_modify, "r+")
@@ -49,7 +49,7 @@ for file_to_modify in files:
         with open(temp_filename, "w") as meta_file:
             meta_file.write(program)
 
-        result = subprocess.run(["py", temp_filename], stdout=subprocess.PIPE)
+        result = subprocess.run([python_exe, temp_filename], stdout=subprocess.PIPE)
         program_result = result.stdout.decode('utf-8').replace('\r\n', '\n') + END
         f = before + program + "*/\n" + program_result + after
         os.remove(temp_filename)
