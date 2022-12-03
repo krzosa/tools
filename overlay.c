@@ -44,8 +44,6 @@ typedef struct ovr_rect {
 typedef struct ovr_context {
   ovr_desc desc;
   ovr_color *canvas;
-  ovr_rect update_stack[32];
-  int update_stack_len;
 
   int x, y, w, h;
   bool should_quit;
@@ -53,11 +51,9 @@ typedef struct ovr_context {
   double app_start_time;
   double frame_start_time;
   double delta_time;
+  uint64_t frame_counter;
 
-  bool global1;
-  bool global2;
-  bool global3;
-  bool global4;
+  bool hotkey_pressed[2];
 
   struct ovr_x11_context *x11;
   char buffer[4096];
@@ -90,14 +86,14 @@ typedef struct ovr_x11_context {
   uint32_t *canvas;
 } ovr_x11_context;
 
-static double timestamp_now(void) {
+double ovr_timestamp_now(void) {
   struct timespec tspec;
   clock_gettime(CLOCK_MONOTONIC, &tspec);
   const uint64_t now = ((uint64_t)tspec.tv_sec * 1000000000 + (uint64_t)tspec.tv_nsec);
   return (double)now / 1000000000.0;
 }
 
-static void ovr__update_canvas(ovr_context *ovr) {
+void ovr_update_canvas(ovr_context *ovr) {
   int x, y;
   unsigned w, h, border, depth;
   XGetGeometry(ovr->x11->display, ovr->x11->window, &ovr->x11->root, &x, &y, &w, &h, &border, &depth);
@@ -156,7 +152,7 @@ ovr_context ovr_start(const ovr_desc *desc) {
       .w = desc->w,
       .h = desc->h,
       .delta_time = desc->delta_time,
-      .app_start_time = timestamp_now(),
+      .app_start_time = ovr_timestamp_now(),
   };
 
   if (ovr.delta_time == 0.0)
@@ -212,22 +208,19 @@ ovr_context ovr_start(const ovr_desc *desc) {
 
   XGrabKey(ovr.x11->display, XKeysymToKeycode(ovr.x11->display, XK_F1), ControlMask | ShiftMask, ovr.x11->root, False, GrabModeAsync, GrabModeAsync);
   XGrabKey(ovr.x11->display, XKeysymToKeycode(ovr.x11->display, XK_F2), ControlMask | ShiftMask, ovr.x11->root, False, GrabModeAsync, GrabModeAsync);
-  XGrabKey(ovr.x11->display, XKeysymToKeycode(ovr.x11->display, XK_F3), ControlMask | ShiftMask, ovr.x11->root, False, GrabModeAsync, GrabModeAsync);
-  XGrabKey(ovr.x11->display, XKeysymToKeycode(ovr.x11->display, XK_F4), ControlMask | ShiftMask, ovr.x11->root, False, GrabModeAsync, GrabModeAsync);
+
   XSelectInput(ovr.x11->display, ovr.x11->root, KeyPressMask);
 
   ovr.x11->gc = XCreateGC(ovr.x11->display, ovr.x11->window, 0, 0);
-  ovr__update_canvas(&ovr);
+  ovr_update_canvas(&ovr);
   return ovr;
 }
 
-bool ovr_update(ovr_context *ovr) {
-  ovr__update_canvas(ovr);
-
+bool ovr_update(ovr_context *ovr) {l
   // First frame frame_start is not initialized
   // update time then is a big number so there is so
   // it doesn't sleep and all is good
-  double time_now = timestamp_now();
+  double time_now = ovr_timestamp_now();
   double update_time = time_now - ovr->frame_start_time;
   if (update_time < ovr->delta_time) {
     double time_to_sleep = ovr->delta_time - update_time;
@@ -237,17 +230,15 @@ bool ovr_update(ovr_context *ovr) {
   }
 
   do {
-    double time_now = timestamp_now();
+    double time_now = ovr_timestamp_now();
     update_time = time_now - ovr->frame_start_time;
   } while (update_time < ovr->delta_time);
 
-  ovr->frame_start_time = timestamp_now();
+  ovr->frame_start_time = ovr_timestamp_now();
+  ovr->frame_counter += 1;
 
-  ovr->global1 = false;
-  ovr->global2 = false;
-  ovr->global3 = false;
-  ovr->global4 = false;
-
+  ovr->hotkey_pressed[0] = false;
+  ovr->hotkey_pressed[1] = false;
   while (XPending(ovr->x11->display)) {
     XEvent ev;
     XNextEvent(ovr->x11->display, &ev);
@@ -259,19 +250,11 @@ bool ovr_update(ovr_context *ovr) {
       break;
     case KeyPress:
       KeySym sym = XLookupKeysym(&ev.xkey, 0);
-      if ((ev.xkey.state & (ShiftMask | ControlMask | Mod1Mask | Mod4Mask)) == (ShiftMask | ControlMask)) {
-        if (sym == XK_F1) {
-          ovr->global1 = true;
-        }
-        if (sym == XK_F2) {
-          ovr->global2 = true;
-        }
-        if (sym == XK_F3) {
-          ovr->global3 = true;
-        }
-        if (sym == XK_F4) {
-          ovr->global4 = true;
-        }
+      if (sym == XK_F1) {
+        ovr->hotkey_pressed[0] = true;
+      }
+      if (sym == XK_F2) {
+        ovr->hotkey_pressed[1] = true;
       }
     default:
       break;

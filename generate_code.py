@@ -3,7 +3,7 @@ import sys
 import os
 
 python_exe = "python3"
-files = ["mui.c"]
+files = []
 
 for file_to_modify in files:
     fd = open(file_to_modify, "r+")
